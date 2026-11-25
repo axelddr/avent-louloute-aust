@@ -1,0 +1,7 @@
+Mets ici les photos et vidéos des 24 jours.
+Les noms doivent correspondre à ceux écrits dans data/jours.js (ex. media/jour01.jpg).
+
+Conseils :
+- Photos en .jpg, environ 2000 px de large maximum (sinon c'est lourd sur iPad).
+- Vidéos en .mp4 (H.264), moins de 50 Mo si possible.
+- Attention aux majuscules : "Jour01.JPG" n'est pas pareil que "jour01.jpg" une fois en ligne.
