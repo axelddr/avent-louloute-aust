@@ -44,7 +44,7 @@ window.JOURS = [
     biome: "cinema", enseigne: "Pathé", animal: "chat", nom: "Charlie", cachette: "auto",
     // photo affichée quand on va dire bonjour au couple assis au milieu de la salle
     photoCouple: { fichiers: ["media/j1/207064ed-a902-49e8-ba10-5decbde2ed3e.jpg", "media/j1/fcb4d391-1e23-4659-a431-c22f91ed13ae.jpg"], titre: "Nous deux ❤", texte: "Toi, moi, un pop-corn et un bon film…" },
-    surprise: { type: "video", fichiers: ["media/jour01.mp4"], texte: "Merci pour toutes ces séances à tes côtés ❤", signature: "— Moi" } },
+    surprise: { type: "video", fichiers: ["media/j1/film-cinema.mp4"], texte: "Merci pour toutes ces séances à tes côtés ❤", signature: "— Moi" } },
 
   // Jour 2 : balade en Camargue. Edith la calopsite se cache au milieu des flamants roses ;
   // ils sont trop serrés pour passer… il faut attendre qu'ils s'envolent et courir la chercher.

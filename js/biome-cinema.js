@@ -446,19 +446,43 @@ window.AV = window.AV || {};
     poussiere.frustumCulled = false; poussiere.visible = false; G.add(poussiere);
 
     // ---------- Vidéo (calque HTML aligné sur l'écran 3D) ----------
-    var calque = null, video = null, videoKO = !fichier, filmEnCours = false, besoinSon = false, deverrouille = false;
+    var calque = null, btnGrand = null, video = null, videoKO = !fichier, filmEnCours = false, besoinSon = false, deverrouille = false;
     if (fichier) {
       calque = document.createElement('div');
       calque.style.cssText = 'position:fixed;z-index:1;pointer-events:none;background:#000;opacity:0;transition:opacity 1.2s;display:none;overflow:hidden;box-shadow:0 0 70px 14px rgba(210,225,255,.22)';
       video = document.createElement('video');
       video.setAttribute('playsinline', ''); video.setAttribute('webkit-playsinline', '');
       video.preload = 'auto';
-      video.style.cssText = 'width:100%;height:100%;object-fit:contain;display:block;background:#000';
+      video.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;border-radius:0;object-fit:contain;display:block;background:#000';
       video.addEventListener('error', function () { videoKO = true; if (filmEnCours) sansVideo(); });
       video.addEventListener('ended', function () { if (filmEnCours) finFilm(); });
       video.src = fichier;
       calque.appendChild(video);
       document.body.appendChild(calque);
+      // bouton « grand écran » : le film passe en plein écran (16/9, bandes noires si besoin), re-toucher pour revenir dans la salle
+      btnGrand = document.createElement('button');
+      btnGrand.textContent = '⛶ Grand écran';
+      btnGrand.style.cssText = 'position:fixed;z-index:60;top:max(14px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:none;border:0;border-radius:999px;padding:10px 18px;font:800 16px Nunito,sans-serif;color:#fff;background:rgba(20,20,30,.62);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);cursor:pointer';
+      btnGrand.addEventListener('click', function (e) { e.stopPropagation(); grandEcran(!enGrand); });
+      document.body.appendChild(btnGrand);
+    }
+    var enGrand = false, pleinParMoi = false;
+    function grandEcran(oui) {
+      if (!calque) return;
+      enGrand = oui;
+      btnGrand.textContent = oui ? '✕ Revenir dans la salle' : '⛶ Grand écran';
+      if (oui) {
+        calque.style.transition = 'none';
+        calque.style.left = '0px'; calque.style.top = '0px'; calque.style.right = '0px'; calque.style.bottom = '0px'; calque.style.width = 'auto'; calque.style.height = 'auto';
+        calque.style.zIndex = '50'; calque.style.boxShadow = 'none';
+        var de = document.documentElement, rf = de.requestFullscreen || de.webkitRequestFullscreen;
+        try { if (rf && !(document.fullscreenElement || document.webkitFullscreenElement)) { pleinParMoi = true; var p = rf.call(de); if (p && p.catch) p.catch(function () { pleinParMoi = false; }); } } catch (e) { }
+      } else {
+        calque.style.right = ''; calque.style.bottom = ''; if (scen) placerCalque(scen.ctx.camera);
+        calque.style.zIndex = '1'; calque.style.boxShadow = '0 0 70px 14px rgba(210,225,255,.22)';
+        setTimeout(function () { if (calque) calque.style.transition = 'opacity 1.2s'; }, 50);
+        if (pleinParMoi) { pleinParMoi = false; var xf = document.exitFullscreen || document.webkitExitFullscreen; try { if (xf && (document.fullscreenElement || document.webkitFullscreenElement)) { var q = xf.call(document); if (q && q.catch) q.catch(function () { }); } } catch (e) { } }
+      }
     }
     var coins = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(function (c) { return new THREE.Vector3(c[0] * ECRAN.l / 2, ECRAN.y + c[1] * ECRAN.h / 2, ECRAN.z + 0.02); });
     var vp = new THREE.Vector3();
@@ -494,6 +518,7 @@ window.AV = window.AV || {};
       document.removeEventListener('click', geste, true);
       if (video) { try { video.pause(); video.removeAttribute('src'); video.load(); } catch (e) { } }
       if (calque && calque.parentNode) calque.parentNode.removeChild(calque);
+      if (btnGrand && btnGrand.parentNode) btnGrand.parentNode.removeChild(btnGrand);
       AV.audio.projecteur(false);
       texEcran.dispose();
       var J = AV.jeu && AV.jeu.joueur && AV.jeu.joueur(); if (J) J.groupe.visible = true;
@@ -508,6 +533,7 @@ window.AV = window.AV || {};
       if (videoKO) { sansVideo(); return; }
       calque.style.display = 'block';
       placerCalque(scen.ctx.camera);
+      btnGrand.style.display = 'block';
       setTimeout(function () { if (filmEnCours && calque) calque.style.opacity = '1'; }, 30);
       video.muted = false;
       try { video.currentTime = 0; } catch (e) { }
@@ -531,6 +557,7 @@ window.AV = window.AV || {};
       if (!scen || scen.fini) return;
       scen.fini = true; filmEnCours = false; besoinSon = false;
       if (video) { try { video.pause(); } catch (e) { } }
+      if (btnGrand) { grandEcran(false); btnGrand.style.display = 'none'; }
       if (calque) { calque.style.opacity = '0'; setTimeout(function () { if (calque) calque.style.display = 'none'; }, 1200); }
       etatEcran = 'fin'; dessinFin(); ecran.material.color.set('#bbbbbb');
       eclairCible = 1;
@@ -612,7 +639,7 @@ window.AV = window.AV || {};
       }
       lumEcran.intensity = AV.lerp(lumEcran.intensity, filmEnCours ? 0.9 + Math.random() * 0.12 : (etatEcran === 'compte' ? 0.5 : 0), dt * 4);
       lumCab.intensity = 0.9 * (0.6 + 0.4 * eclair) + (cibleF ? Math.random() * 0.1 : 0);
-      if (calque && calque.style.display === 'block') placerCalque(scen.ctx.camera);
+      if (calque && calque.style.display === 'block' && !enGrand) placerCalque(scen.ctx.camera);
 
       if (!scen || scen.fini) return;
       // déroulé de la séance
