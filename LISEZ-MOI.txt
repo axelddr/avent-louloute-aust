@@ -1,0 +1,30 @@
+NOS 24 SOUVENIRS · calendrier de l'Avent 3D
+============================================
+
+TESTER SUR PC
+  Double-clique sur index.html (Chrome ou Edge). Une connexion internet est
+  nécessaire pour charger le moteur 3D.
+  Mode test (tous les jours débloqués, indices 4 fois plus rapides) :
+    ajoute ?test=1 à la fin de l'adresse dans le navigateur
+    exemple : ...index.html?test=1
+  Aller directement à un jour : ?test=1&jour=5
+  Remettre la progression à zéro : touche F12 > Console > AV.jeu.reinitialiser()
+
+  Clavier : ZQSD ou flèches = bouger · Maj = courir · Espace = sauter
+            E = action · glisser à la souris = caméra · molette = zoom
+
+SUR iPAD
+  Joystick : pouce gauche n'importe où sur la moitié gauche de l'écran.
+  Caméra : glisser sur la droite. Boutons ✋ (action) et ⤒ (saut).
+  Astuce : Safari > Partager > « Sur l'écran d'accueil » = plein écran comme une appli.
+  Attention : ouvrir le fichier depuis OneDrive sur l'iPad ne marche pas,
+  il faut que le jeu soit en ligne (voir plus bas).
+
+PERSONNALISER
+  1. data/jours.js : titres, biomes, animaux, surprises (tout est expliqué en haut du fichier)
+  2. media/ : tes photos et vidéos
+
+METTRE EN LIGNE (quand c'est fini)
+  Netlify Drop (app.netlify.com/drop) : glisser le dossier calendrier-avent entier
+  -> on obtient un lien à envoyer. Ou GitHub Pages, ou demander à Claude de le publier.
+  Le déblocage se fait selon la date de l'iPad (1er au 24 décembre de CONFIG.annee).

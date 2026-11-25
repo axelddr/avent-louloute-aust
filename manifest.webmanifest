@@ -1,0 +1,9 @@
+{
+  "name": "Nos 24 souvenirs",
+  "short_name": "Avent",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#1b2340",
+  "theme_color": "#1b2340"
+}

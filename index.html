@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Nos 24 souvenirs">
+<meta name="theme-color" content="#1b2340">
+<title>Nos 24 souvenirs</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Nunito:wght@400;700;900&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="jeu"></div>
+
+<!-- Zone tactile (joystick à gauche, caméra à droite) -->
+<div id="zone-tactile"></div>
+<div id="joystick"><div id="joystick-bouton"></div></div>
+
+<!-- HUD -->
+<div id="hud" class="cache">
+  <div id="hud-haut-gauche">
+    <div id="hud-titre"></div>
+    <div id="hud-sous-titre"></div>
+  </div>
+  <div id="hud-haut-droite">
+    <button id="btn-village" class="btn-rond" title="Retour au village">🏠</button>
+    <button id="btn-musique" class="btn-rond" title="Musique">🎵</button>
+    <button id="btn-plein-ecran" class="btn-rond" title="Plein écran">⛶</button>
+  </div>
+  <div id="hud-indice"></div>
+  <div id="hud-message"></div>
+  <div id="hud-boutons">
+    <button id="btn-action" class="btn-jeu" title="Action (E)">✋</button>
+    <button id="btn-saut" class="btn-jeu" title="Sauter (Espace)">⤒</button>
+  </div>
+  <div id="hud-aide-clavier">ZQSD / flèches : bouger · Maj : courir · Espace : sauter · E : action · glisser : caméra</div>
+</div>
+
+<!-- Écran titre -->
+<div id="ecran-titre">
+  <div class="neige-titre"></div>
+  <div class="titre-contenu">
+    <div class="titre-etoile">✨</div>
+    <h1 id="titre-principal">Nos 24 souvenirs</h1>
+    <p id="titre-sous-titre"></p>
+    <button id="btn-commencer">Commencer</button>
+    <p id="titre-progression"></p>
+    <p id="titre-test" class="cache">Mode test : tous les jours sont débloqués</p>
+  </div>
+</div>
+
+<!-- Fenêtre de récompense -->
+<div id="modal" class="cache">
+  <div id="modal-boite">
+    <button id="modal-fermer" title="Fermer">✕</button>
+    <div id="modal-entete"></div>
+    <div id="modal-contenu"></div>
+  </div>
+</div>
+
+<canvas id="confettis"></canvas>
+<div id="fondu"></div>
+<div id="tourne"><div>📱↻<br>Tourne l'iPad à l'horizontale</div></div>
+<div id="erreur" class="cache"></div>
+
+<script>
+  window.addEventListener('error', function (e) {
+    var el = document.getElementById('erreur');
+    el.classList.remove('cache');
+    el.textContent = 'Oups : ' + (e.message || 'erreur') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '');
+  });
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="data/jours.js"></script>
+<script src="js/util.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/controles.js"></script>
+<script src="js/avatars.js"></script>
+<script src="js/personnage.js"></script>
+<script src="js/animaux.js"></script>
+<script src="js/biomes.js"></script>
+<script src="js/biome-cinema.js"></script>
+<script src="js/biome-camargue.js"></script>
+<script src="js/biome-rooftop.js"></script>
+<script src="js/biome-lac-nuit.js"></script>
+<script src="js/biome-peyrou.js"></script>
+<script src="js/biome-trail.js"></script>
+<script src="js/biome-golf.js"></script>
+<script src="js/biome-hortus.js"></script>
+<script src="js/biome-paddle.js"></script>
+<script src="js/biome-appart.js"></script>
+<script src="js/biome-rougail.js"></script>
+<script src="js/biome-puy-dome.js"></script>
+<script src="js/biome-chalet.js"></script>
+<script src="js/biome-plage-soir.js"></script>
+<script src="js/biome-restinclieres.js"></script>
+<script src="js/biome-lagazuoi.js"></script>
+<script src="js/biome-chambre-oce.js"></script>
+<script src="js/biome-laroque.js"></script>
+<script src="js/biome-bowling.js"></script>
+<script src="js/biome-comedie.js"></script>
+<script src="js/recompenses.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
