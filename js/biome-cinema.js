@@ -673,7 +673,7 @@ window.AV = window.AV || {};
       var T = scen.t, a = scen.ctx.animal;
       if (scen.etape === 0 && T > 1.15) {
         scen.etape = 1; scen.projo = true;
-        AV.audio.projecteur(true); AV.audio.clic();
+        AV.audio.projecteur(true, 2); AV.audio.clic();
         bouton.position.y = HAUT + 1.21;
         a.fuite = [{ x: 0.5, y: HAUT, z: 11.75 }, { x: -0.6, y: HAUT, z: 11.6 }];
         a.bulle(scen.ctx.scene, '⚡ clic !', { vie: 1.2, largeur: 1.3 });

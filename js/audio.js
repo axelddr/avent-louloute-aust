@@ -253,8 +253,14 @@ window.AV = window.AV || {};
       for (var k = 0; k < 10; k++) bruitCourt(500 + Math.random() * 300, 0.8, 0.12, 0.25 * v, t + 0.3 + k * 0.11);
     },
     // ronronnement mécanique du projecteur (on / off)
-    projecteur: function (on) {
+    projecteur: function (on, duree) {
       if (!ctx) return;
+      if (on && duree) { // s'arrête tout seul (fondu) au bout de `duree` s
+        var self = this; this.projecteur(true);
+        var moi = projo;
+        setTimeout(function () { if (projo === moi) self.projecteur(false); }, duree * 1000);
+        return;
+      }
       if (projo) { var p = projo; projo = null; p.g.gain.setTargetAtTime(0, ctx.currentTime, 0.2); setTimeout(function () { try { p.s.stop(); p.lfo.stop(); } catch (e) { } }, 1200); }
       if (!on) return;
       var t = ctx.currentTime;
