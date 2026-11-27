@@ -771,8 +771,229 @@ window.AV = window.AV || {};
     charger(src || imageSecours(), !!src);
   }
 
+  // ---------- Coloriage magique (peinture par numéros) fabriqué à partir d'une photo ----------
+  // s.fichier : la photo · s.couleurs : nombre de couleurs (12) · s.detail : finesse (1 = normal, 1.5 = plus de zones)
+  // Dans le jeu : choisir une couleur, toucher les zones de ce numéro (🪄 = toutes d'un coup) ; tout colorié → la photo apparaît.
+  // 🖨️ / 📥 : une feuille A4 à imprimer (zones vierges numérotées + légende des couleurs).
+  function coloriageCalcul(img, K, detail) {
+    var W = Math.round(380 * Math.sqrt(detail || 1)), H = Math.round(W * img.naturalHeight / img.naturalWidth), N = W * H;
+    var c1 = document.createElement('canvas'); c1.width = W * 2; c1.height = H * 2; c1.getContext('2d').drawImage(img, 0, 0, W * 2, H * 2);
+    var c = document.createElement('canvas'); c.width = W; c.height = H; var x = c.getContext('2d'); x.drawImage(c1, 0, 0, W, H); // réduction douce
+    var d = x.getImageData(0, 0, W, H).data, i, j, k;
+    // couleurs → Lab (plus fidèle à l'œil pour regrouper les teintes)
+    var lin = new Float32Array(256); for (i = 0; i < 256; i++) { var v = i / 255; lin[i] = v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+    function f(t) { return t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116; }
+    var LL = new Float32Array(N), AA = new Float32Array(N), BB = new Float32Array(N);
+    for (i = 0; i < N; i++) {
+      var r = lin[d[i * 4]], g = lin[d[i * 4 + 1]], b = lin[d[i * 4 + 2]];
+      var X = f((r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.9505), Y = f(r * 0.2126 + g * 0.7152 + b * 0.0722), Z = f((r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.089);
+      LL[i] = 116 * Y - 16; AA[i] = 500 * (X - Y); BB[i] = 200 * (Y - Z);
+    }
+    // k-means (++), sur un échantillon, graine fixe → toujours le même coloriage
+    var rng = AV.rng(4242), S = Math.min(N, 7000), ech = new Int32Array(S); for (i = 0; i < S; i++) ech[i] = Math.floor(rng() * N);
+    var cL = [], cA = [], cB = [], dmin = new Float32Array(S).fill(1e9);
+    function d2(p, q) { var a = LL[p] - cL[q], b2 = AA[p] - cA[q], e = BB[p] - cB[q]; return a * a + b2 * b2 + e * e; }
+    var p0 = ech[0]; cL.push(LL[p0]); cA.push(AA[p0]); cB.push(BB[p0]);
+    while (cL.length < K) {
+      var tot = 0; for (i = 0; i < S; i++) { dmin[i] = Math.min(dmin[i], d2(ech[i], cL.length - 1)); tot += dmin[i]; }
+      var t = rng() * tot, s2 = 0; for (i = 0; i < S; i++) { s2 += dmin[i]; if (s2 >= t) break; }
+      var pp = ech[Math.min(i, S - 1)]; cL.push(LL[pp]); cA.push(AA[pp]); cB.push(BB[pp]);
+    }
+    var lab = new Uint8Array(N);
+    function proche(p) { var bk = 0, bd = 1e12; for (var q = 0; q < K; q++) { var dd = d2(p, q); if (dd < bd) { bd = dd; bk = q; } } return bk; }
+    for (var it = 0; it < 14; it++) {
+      var sL = new Float64Array(K), sA = new Float64Array(K), sB = new Float64Array(K), n = new Float64Array(K);
+      for (i = 0; i < S; i++) { var p = ech[i]; k = proche(p); sL[k] += LL[p]; sA[k] += AA[p]; sB[k] += BB[p]; n[k]++; }
+      for (k = 0; k < K; k++) if (n[k]) { cL[k] = sL[k] / n[k]; cA[k] = sA[k] / n[k]; cB[k] = sB[k] / n[k]; }
+    }
+    for (i = 0; i < N; i++) lab[i] = proche(i);
+    // lissage : filtre majoritaire 3×3 (deux passes)
+    for (var pass = 0; pass < 1; pass++) {
+      var nv = new Uint8Array(lab), cnt = new Uint8Array(K);
+      for (j = 1; j < H - 1; j++) for (i = 1; i < W - 1; i++) {
+        cnt.fill(0); var best = lab[j * W + i], bc = 0;
+        for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) { var q2 = lab[(j + dy) * W + i + dx]; if (++cnt[q2] > bc) { bc = cnt[q2]; best = q2; } }
+        if (bc >= 5) nv[j * W + i] = best;
+      }
+      lab = nv;
+    }
+    // zones (composantes connexes) ; les trop petites sont fondues dans leur voisine
+    var reg = new Int32Array(N), pile = new Int32Array(N), tailles = [], minA = Math.max(10, Math.round(N / (9500 * (detail || 1))));
+    function etiqueter() {
+      reg.fill(-1); tailles = []; var nr = 0;
+      for (var s0 = 0; s0 < N; s0++) {
+        if (reg[s0] >= 0) continue;
+        var h = 0, taille = 0, cl = lab[s0]; pile[h++] = s0; reg[s0] = nr;
+        while (h) { var u = pile[--h]; taille++; var ux = u % W, uy = (u / W) | 0;
+          if (ux > 0 && reg[u - 1] < 0 && lab[u - 1] === cl) { reg[u - 1] = nr; pile[h++] = u - 1; }
+          if (ux < W - 1 && reg[u + 1] < 0 && lab[u + 1] === cl) { reg[u + 1] = nr; pile[h++] = u + 1; }
+          if (uy > 0 && reg[u - W] < 0 && lab[u - W] === cl) { reg[u - W] = nr; pile[h++] = u - W; }
+          if (uy < H - 1 && reg[u + W] < 0 && lab[u + W] === cl) { reg[u + W] = nr; pile[h++] = u + W; } }
+        tailles.push(taille); nr++;
+      }
+      return nr;
+    }
+    for (var tour = 0; tour < 6; tour++) {
+      var nr = etiqueter(), change = false, vois = {};
+      for (i = 0; i < N; i++) {
+        var rg = reg[i]; if (tailles[rg] >= minA) continue;
+        var px = i % W, py = (i / W) | 0;
+        [[px - 1, py], [px + 1, py], [px, py - 1], [px, py + 1]].forEach(function (q) {
+          if (q[0] < 0 || q[1] < 0 || q[0] >= W || q[1] >= H) return; var qi = q[1] * W + q[0]; if (reg[qi] === rg) return;
+          var m = vois[rg] || (vois[rg] = {}); m[qi] = 1;
+        });
+      }
+      Object.keys(vois).forEach(function (rgs) { // la couleur voisine la plus présente le long du bord
+        var cpt = {}, b0 = -1, bn = 0; Object.keys(vois[rgs]).forEach(function (qi) { var l2 = lab[qi]; cpt[l2] = (cpt[l2] || 0) + (tailles[reg[qi]] >= minA ? 3 : 1); if (cpt[l2] > bn) { bn = cpt[l2]; b0 = l2; } });
+        if (b0 >= 0) { vois[rgs].cible = b0; change = true; }
+      });
+      if (!change) break;
+      for (i = 0; i < N; i++) { var v2 = vois[reg[i]]; if (v2 && v2.cible != null && tailles[reg[i]] < minA) lab[i] = v2.cible; }
+    }
+    var NR = etiqueter();
+    // distance au bord (chanfrein) → le numéro va là où la zone est la plus large
+    var dist = new Float32Array(N);
+    for (i = 0; i < N; i++) { var ix = i % W, iy = (i / W) | 0; dist[i] = (ix === 0 || iy === 0 || ix === W - 1 || iy === H - 1 || reg[i - 1] !== reg[i] || reg[i + 1] !== reg[i] || reg[i - W] !== reg[i] || reg[i + W] !== reg[i]) ? 0.5 : 1e9; }
+    for (j = 1; j < H; j++) for (i = 1; i < W - 1; i++) { var a0 = j * W + i; dist[a0] = Math.min(dist[a0], dist[a0 - 1] + 1, dist[a0 - W] + 1, dist[a0 - W - 1] + 1.414, dist[a0 - W + 1] + 1.414); }
+    for (j = H - 2; j >= 0; j--) for (i = W - 2; i > 0; i--) { var a1 = j * W + i; dist[a1] = Math.min(dist[a1], dist[a1 + 1] + 1, dist[a1 + W] + 1, dist[a1 + W + 1] + 1.414, dist[a1 + W - 1] + 1.414); }
+    var zones = []; for (k = 0; k < NR; k++) zones.push({ x: 0, y: 0, r: -1, c: 0 });
+    for (i = 0; i < N; i++) { var z = zones[reg[i]]; if (dist[i] > z.r) { z.r = dist[i]; z.x = i % W + 0.5; z.y = ((i / W) | 0) + 0.5; z.c = lab[i]; } }
+    // palette : Lab → RGB, triée du plus clair au plus foncé (numéros 1…K)
+    function rgbDe(k2) {
+      var Y = (cL[k2] + 16) / 116, X = cA[k2] / 500 + Y, Z = Y - cB[k2] / 200;
+      function fi(t) { return t * t * t > 0.008856 ? t * t * t : (t - 16 / 116) / 7.787; }
+      X = fi(X) * 0.9505; Y = fi(Y); Z = fi(Z) * 1.089;
+      var rr = X * 3.2406 - Y * 1.5372 - Z * 0.4986, gg = -X * 0.9689 + Y * 1.8758 + Z * 0.0415, bb = X * 0.0557 - Y * 0.2040 + Z * 1.0570;
+      function g2(u) { u = u <= 0.0031308 ? 12.92 * u : 1.055 * Math.pow(u, 1 / 2.4) - 0.055; return Math.max(0, Math.min(255, Math.round(u * 255))); }
+      return [g2(rr), g2(gg), g2(bb)];
+    }
+    var ordre = []; for (k = 0; k < K; k++) ordre.push(k); ordre.sort(function (a, b) { return cL[b] - cL[a]; });
+    var numero = new Int32Array(K); ordre.forEach(function (k3, idx) { numero[k3] = idx + 1; });
+    var palette = ordre.map(function (k3) { return rgbDe(k3); });
+    // contours : segments entre deux zones différentes (fusionnés en traits)
+    var traits = [];
+    for (j = 0; j < H; j++) { var deb = -1; for (i = 0; i <= W; i++) { var diff = i < W && j < H - 1 && reg[j * W + i] !== reg[(j + 1) * W + i]; if (diff && deb < 0) deb = i; if (!diff && deb >= 0) { traits.push([deb, j + 1, i, j + 1]); deb = -1; } } }
+    for (i = 0; i < W - 1; i++) { var deb2 = -1; for (j = 0; j <= H; j++) { var diff2 = j < H && reg[j * W + i] !== reg[j * W + i + 1]; if (diff2 && deb2 < 0) deb2 = j; if (!diff2 && deb2 >= 0) { traits.push([i + 1, deb2, i + 1, j]); deb2 = -1; } } }
+    zones.forEach(function (z) { z.n = numero[z.c]; });
+    return { W: W, H: H, reg: reg, zones: zones, palette: palette, traits: traits, couleurDe: function (zi) { return palette[zones[zi].n - 1]; } };
+  }
+  function coloriageDessin(ctx, C, ox, oy, s, rempli, o) {
+    o = o || {};
+    var t = document.createElement('canvas'); t.width = C.W; t.height = C.H;
+    var tx = t.getContext('2d'), im = tx.createImageData(C.W, C.H), d = im.data;
+    for (var i = 0; i < C.W * C.H; i++) { var zi = C.reg[i], col = (o.modele || (rempli && rempli[zi])) ? C.palette[C.zones[zi].n - 1] : [255, 255, 255]; d[i * 4] = col[0]; d[i * 4 + 1] = col[1]; d[i * 4 + 2] = col[2]; d[i * 4 + 3] = 255; }
+    tx.putImageData(im, 0, 0);
+    ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(t, ox, oy, C.W * s, C.H * s); ctx.restore();
+    if (o.modele) return;
+    ctx.save(); ctx.strokeStyle = o.trait || '#8c8c94'; ctx.lineWidth = o.epaisseur || Math.max(1, s * 0.22); ctx.lineCap = 'square'; ctx.beginPath();
+    C.traits.forEach(function (l) { ctx.moveTo(ox + l[0] * s, oy + l[1] * s); ctx.lineTo(ox + l[2] * s, oy + l[3] * s); });
+    ctx.stroke(); ctx.strokeRect(ox, oy, C.W * s, C.H * s); ctx.restore();
+    ctx.save(); ctx.fillStyle = o.chiffres || '#6d6d78'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    C.zones.forEach(function (z, zi) {
+      if (rempli && rempli[zi]) return;
+      var fs = Math.max(o.minPolice || 7, Math.min(s * z.r * 1.15, s * 4.5, o.maxPolice || 40));
+      ctx.font = '700 ' + fs.toFixed(1) + 'px Nunito, Arial, sans-serif'; ctx.fillText(String(z.n), ox + z.x * s, oy + z.y * s + fs * 0.05);
+    });
+    ctx.restore();
+  }
+  function coloriageA4(C, titre, sousTitre) {
+    var Wp = 1654, Hp = 2339, m = 90, c = document.createElement('canvas'); c.width = Wp; c.height = Hp;
+    var x = c.getContext('2d'); x.fillStyle = '#ffffff'; x.fillRect(0, 0, Wp, Hp);
+    x.fillStyle = '#2b2340'; x.textAlign = 'center'; x.font = '700 92px Caveat, cursive'; x.fillText(titre || 'Coloriage magique ✨', Wp / 2, m + 60);
+    x.font = '400 34px Nunito, sans-serif'; x.fillStyle = '#6a6478'; x.fillText(sousTitre || 'Colorie chaque zone avec la couleur de son numéro… et la magie opère ❤', Wp / 2, m + 118);
+    var lignes = Math.ceil(C.palette.length / 8), hLeg = 70 + lignes * 120, haut = m + 160, dispoH = Hp - haut - hLeg - m, dispoW = Wp - 2 * m;
+    var s = Math.min(dispoW / C.W, dispoH / C.H), ox = (Wp - C.W * s) / 2, oy = haut;
+    coloriageDessin(x, C, ox, oy, s, null, { minPolice: 13, maxPolice: 34, epaisseur: 1.6, trait: '#9a9aa2', chiffres: '#7a7a84' });
+    var ly = oy + C.H * s + 70, par = Math.min(8, C.palette.length), pas = (Wp - 2 * m) / par;
+    C.palette.forEach(function (p, i) {
+      var cx = m + pas * (i % par + 0.5), cy = ly + Math.floor(i / par) * 120 + 30;
+      x.beginPath(); x.arc(cx, cy, 34, 0, 7); x.fillStyle = 'rgb(' + p.join(',') + ')'; x.fill(); x.lineWidth = 3; x.strokeStyle = '#d8d4dc'; x.stroke();
+      x.fillStyle = '#2b2340'; x.font = '800 34px Nunito, sans-serif'; x.fillText(String(i + 1), cx, cy + 74);
+    });
+    return c.toDataURL('image/png');
+  }
+  var colEtat = null;
+  function coloriage(s, zone) {
+    var src = s.fichier || (s.fichiers && s.fichiers[0]);
+    var boite2 = el('div', 'coloriage'), inner = el('div'), zoom = 1;
+    boite2.style.cssText = 'margin:0 auto 10px;max-width:560px;max-height:62vh;overflow:auto;-webkit-overflow-scrolling:touch;border-radius:12px;box-shadow:0 4px 18px rgba(0,0,0,.15);background:#fff';
+    inner.style.cssText = 'position:relative;width:100%';
+    var att = el('div', 'centre', '<div style="font-size:46px">🪄</div><div>La magie opère…</div>'); inner.appendChild(att);
+    boite2.appendChild(inner); zone.appendChild(boite2);
+    var barre = el('div', 'centre'); barre.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:8px 0';
+    var pal = el('div'); pal.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:6px 0 4px';
+    var info = el('div', 'centre'); info.style.cssText = 'font-weight:800;color:#6a6478;margin:4px 0';
+    zone.appendChild(pal); zone.appendChild(info); zone.appendChild(barre);
+    ajouter(zone, texte(s.texte));
+    if (s.signature) zone.appendChild(el('div', 'centre signature-echange', echapper(s.signature)));
+    var img = new Image();
+    img.onerror = function () { att.innerHTML = '<div style="font-size:42px">📸</div><div>La photo du coloriage est introuvable</div><code>' + echapper(src || '') + '</code>'; };
+    img.onload = function () {
+      setTimeout(function () {
+        var C;
+        try { C = coloriageCalcul(img, s.couleurs || 16, s.detail || 1); }
+        catch (e) { att.innerHTML = '<div style="font-size:42px">🙈</div><div>Le coloriage ne peut pas se fabriquer ici (ouvre le site en ligne).</div>'; return; }
+        inner.removeChild(att);
+        var cle = 'av_coloriage_' + (src || '') + '_' + (s.couleurs || 16) + '_' + (s.detail || 1) + '_' + C.zones.length, rempli = {};
+        try { rempli = JSON.parse(localStorage.getItem(cle)) || {}; } catch (e) { }
+        // pas plus haut que l'écran (on zoome pour les petites zones)
+        boite2.style.maxWidth = Math.min(560, Math.round(window.innerHeight * 0.62 * C.W / C.H)) + 'px';
+        var cv = document.createElement('canvas'), dpr = Math.min(2, window.devicePixelRatio || 1);
+        cv.style.cssText = 'width:100%;display:block;touch-action:manipulation;cursor:pointer;background:#fff';
+        inner.appendChild(cv);
+        var photo = new Image(); photo.src = src; photo.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 2.5s;pointer-events:none';
+        inner.appendChild(photo);
+        var choix = 1, total = C.zones.length;
+        function nbFaites() { var n = 0; for (var k in rempli) if (rempli[k]) n++; return n; }
+        function dessiner() {
+          var w = inner.clientWidth || 520, sc = Math.min(w * dpr, 2600) / C.W;
+          cv.width = Math.round(C.W * sc); cv.height = Math.round(C.H * sc);
+          var x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height);
+          coloriageDessin(x, C, 0, 0, sc, rempli, { minPolice: 6 * dpr, maxPolice: 22 * dpr, epaisseur: Math.max(0.8, 0.9 * dpr) });
+          var n = nbFaites(); info.textContent = n >= total ? '✨ Terminé ! ✨' : '🎨 ' + n + ' / ' + total + ' zones coloriées · couleur n°' + choix;
+        }
+        function sauver() { try { localStorage.setItem(cle, JSON.stringify(rempli)); } catch (e) { } }
+        function verifierFin() {
+          if (nbFaites() >= total && photo.style.opacity !== '1') {
+            setTimeout(function () { photo.style.opacity = '1'; AV.audio.victoire(); AV.confettis(160); }, 600);
+          }
+        }
+        C.palette.forEach(function (p, i) {
+          var b = el('button'); b.textContent = String(i + 1);
+          var clair = p[0] * 0.299 + p[1] * 0.587 + p[2] * 0.114 > 150;
+          b.style.cssText = 'width:40px;height:40px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 2px #d8d4dc;font:900 15px Nunito,sans-serif;cursor:pointer;touch-action:manipulation;background:rgb(' + p.join(',') + ');color:' + (clair ? '#2b2340' : '#fff');
+          b.onclick = function () { choix = i + 1; AV.audio.clic(); Array.prototype.forEach.call(pal.children, function (c, j) { c.style.boxShadow = j === i ? '0 0 0 3px #2b2340' : '0 0 0 2px #d8d4dc'; }); dessiner(); };
+          pal.appendChild(b);
+        });
+        pal.children[0].style.boxShadow = '0 0 0 3px #2b2340';
+        cv.addEventListener('click', function (e) {
+          var r = cv.getBoundingClientRect(), gx = Math.floor((e.clientX - r.left) / r.width * C.W), gy = Math.floor((e.clientY - r.top) / r.height * C.H);
+          if (gx < 0 || gy < 0 || gx >= C.W || gy >= C.H) return;
+          var zi = C.reg[gy * C.W + gx], z = C.zones[zi];
+          if (rempli[zi]) return;
+          if (z.n !== choix) { AV.audio.erreur(); info.textContent = '🙈 Cette zone, c\'est le n°' + z.n + ' !'; return; }
+          rempli[zi] = 1; AV.audio.pinceau ? AV.audio.pinceau(1) : AV.audio.clic(); sauver(); dessiner(); verifierFin();
+        });
+        function bouton(txt, fn) { var b = el('button', 'btn-secondaire', txt); b.style.cssText = 'border:0;border-radius:999px;padding:9px 14px;font:800 15px Nunito,sans-serif;background:#efe9f6;color:#2b2340;cursor:pointer'; b.onclick = fn; barre.appendChild(b); return b; }
+        bouton('🔍 Zoom', function () {
+          var cxr = (boite2.scrollLeft + boite2.clientWidth / 2) / inner.clientWidth, cyr = (boite2.scrollTop + boite2.clientHeight / 2) / inner.clientHeight;
+          zoom = zoom >= 3 ? 1 : zoom + 1; inner.style.width = (zoom * 100) + '%'; this.textContent = zoom >= 3 ? '🔍 Dézoomer' : '🔍 Zoom ×' + (zoom + 1);
+          dessiner(); boite2.scrollLeft = cxr * inner.clientWidth - boite2.clientWidth / 2; boite2.scrollTop = cyr * inner.clientHeight - boite2.clientHeight / 2;
+        });
+        bouton('🪄 Tout le n° choisi', function () { C.zones.forEach(function (z, zi) { if (z.n === choix) rempli[zi] = 1; }); AV.audio.scintille ? AV.audio.scintille() : AV.audio.ping(1); sauver(); dessiner(); verifierFin(); });
+        bouton('👀 Modèle', function () { photo.style.transition = 'opacity .4s'; photo.style.opacity = photo.style.opacity === '1' ? '0' : '1'; setTimeout(function () { photo.style.transition = 'opacity 2.5s'; }, 450); });
+        bouton('🖨️ Imprimer / 📥 Télécharger', function () { AV.audio.clic(); partager(coloriageA4(C, s.titre, s.consigne), 'coloriage-magique.png', 'Mon coloriage magique ✨', 'Coloriage magique'); });
+        bouton('↺ Recommencer', function () { rempli = {}; sauver(); photo.style.opacity = '0'; dessiner(); });
+        dessiner(); if (nbFaites() >= total) photo.style.opacity = '1';
+        colEtat = { C: C, finir: function () { C.zones.forEach(function (z, zi) { rempli[zi] = 1; }); sauver(); dessiner(); verifierFin(); }, a4: function () { return coloriageA4(C, s.titre, s.consigne); }, zones: total };
+      }, 60);
+    };
+    img.src = src || '';
+  }
+
   // ---------- API ----------
   AV.recompenses = {
+    __coloriage: function () { return colEtat; },
     init: function () {
       modal = document.getElementById('modal');
       boite = document.getElementById('modal-boite');
@@ -786,8 +1007,8 @@ window.AV = window.AV || {};
       var s = cfg.surprise || { type: 'mot', texte: '' };
       entete.innerHTML = '<div class="jour">Jour ' + cfg.jour + '</div><h2>' + echapper(cfg.titre) + '</h2>';
       contenu.innerHTML = '';
-      var types = { photo: photo, video: video, mot: mot, cadeau: cadeau, recette: recette, livre: livre, postit: postit, echange: echange, krapfen: krapfen };
-      boite.classList.toggle('large', s.type === 'livre' || s.type === 'echange');
+      var types = { photo: photo, video: video, mot: mot, cadeau: cadeau, recette: recette, livre: livre, postit: postit, echange: echange, krapfen: krapfen, coloriage: coloriage };
+      boite.classList.toggle('large', s.type === 'livre' || s.type === 'echange' || s.type === 'coloriage');
       if (s.type === 'jeu') ({ memory: memory, quiz: quiz, puzzle: puzzle }[s.jeu] || memory)(s, contenu);
       else (types[s.type] || mot)(s, contenu);
       var fin = el('div', 'centre');

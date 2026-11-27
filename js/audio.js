@@ -32,6 +32,7 @@ window.AV = window.AV || {};
     comedie:     { base: 62, gamme: [0, 2, 4, 7, 9, 11, 12, 14, 16], tempo: 88, onde: 'triangle', grelots: true },
     lumieres:    { base: 57, gamme: [0, 4, 7, 11, 14, 16, 19, 21], tempo: 58, onde: 'sine', grelots: true },
     restinclieres: { base: 62, gamme: [0, 2, 4, 5, 7, 9, 11, 12, 14], tempo: 76, onde: 'triangle', grelots: true },
+    anniv:       { base: 62, gamme: [0, 2, 4, 5, 7, 9, 12, 14, 16], tempo: 96, onde: 'triangle', grelots: true },
     defaut:     { base: 60, gamme: [0, 2, 4, 7, 9, 12], tempo: 76, onde: 'triangle' }
   };
   var theme = themes.hub, prochain = 0, pas = 0, degre = 3;
@@ -594,6 +595,31 @@ window.AV = window.AV || {};
       if (!ctx) return;
       var t = ctx.currentTime;
       for (var k = 0; k < 6; k++) { bruitCourt(320 + (k % 2) * 90, 5, 0.12, 0.4, t + k * 0.2); note(52 + (k % 2) * 3, t + k * 0.2, 0.1, 0.05, 'sine'); }
+    },
+    // « Joyeux anniversaire » (mélodie traditionnelle) : renvoie sa durée en secondes ; la famille chante (voix douces + accords)
+    joyeuxAnniversaire: function () {
+      if (!ctx) return 0;
+      var b = 0.42, t0 = ctx.currentTime + 0.15, t = t0;
+      var M = [[67, 0.75], [67, 0.25], [69, 1], [67, 1], [72, 1], [71, 2],
+               [67, 0.75], [67, 0.25], [69, 1], [67, 1], [74, 1], [72, 2],
+               [67, 0.75], [67, 0.25], [79, 1], [76, 1], [72, 1], [71, 1], [69, 2.5],
+               [77, 0.75], [77, 0.25], [76, 1], [72, 1], [74, 1], [72, 3]];
+      var ACC = [[60, 0], [55, 6], [60, 12], [65, 18], [60, 22], [55, 24], [60, 26]];
+      M.forEach(function (n) {
+        var d = n[1] * b;
+        note(n[0], t, d * 1.05, 0.13, 'triangle'); note(n[0] - 12, t, d * 1.05, 0.05, 'sine'); note(n[0] + 0.12, t + 0.01, d, 0.04, 'sawtooth');
+        t += d;
+      });
+      ACC.forEach(function (a) { note(a[0] - 12, t0 + a[1] * b, 6 * b, 0.07, 'sine'); note(a[0] - 5, t0 + a[1] * b, 6 * b, 0.04, 'sine'); });
+      return t - t0 + 0.3;
+    },
+    // on souffle les bougies
+    souffleBougies: function () {
+      if (!ctx) return;
+      var t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = bruit;
+      var f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1100; f.Q.value = 0.6;
+      var g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.35, t + 0.08); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+      s.connect(f); f.connect(g); g.connect(busEffets); s.start(t, Math.random()); s.stop(t + 0.95);
     },
     ambiance: function (type) {
       if (!ctx) return;

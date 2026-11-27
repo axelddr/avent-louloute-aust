@@ -132,7 +132,9 @@ window.AV = window.AV || {};
     var nom = cfg.nom || AV.nomAnimal(cfg.animal);
     var enseigne = cfg.enseigne || 'Cinéma';
     var surprise = cfg.surprise || {};
-    var fichier = surprise.type === 'video' ? ((surprise.fichiers && surprise.fichiers[0]) || 'media/jour' + (cfg.jour < 10 ? '0' : '') + cfg.jour + '.mp4') : null;
+    // le film peut être en plusieurs morceaux (fichiers: [...]), joués à la suite sans coupure visible
+    var fichiers = surprise.type === 'video' ? ((surprise.fichiers && surprise.fichiers.length) ? surprise.fichiers.slice() : ['media/jour' + (cfg.jour < 10 ? '0' : '') + cfg.jour + '.mp4']) : [];
+    var fichier = fichiers[0] || null;
     var G = m.groupe;
 
     // ---------- Sol, gradins, marches ----------
@@ -446,18 +448,23 @@ window.AV = window.AV || {};
     poussiere.frustumCulled = false; poussiere.visible = false; G.add(poussiere);
 
     // ---------- Vidéo (calque HTML aligné sur l'écran 3D) ----------
-    var calque = null, btnGrand = null, video = null, videoKO = !fichier, filmEnCours = false, besoinSon = false, deverrouille = false;
+    var calque = null, btnGrand = null, video = null, lecteurs = [], iV = 0, videoKO = !fichier, filmEnCours = false, besoinSon = false, deverrouille = false;
     if (fichier) {
       calque = document.createElement('div');
       calque.style.cssText = 'position:fixed;z-index:1;pointer-events:none;background:#000;opacity:0;transition:opacity 1.2s;display:none;overflow:hidden;box-shadow:0 0 70px 14px rgba(210,225,255,.22)';
-      video = document.createElement('video');
-      video.setAttribute('playsinline', ''); video.setAttribute('webkit-playsinline', '');
-      video.preload = 'auto';
-      video.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;border-radius:0;object-fit:contain;display:block;background:#000';
-      video.addEventListener('error', function () { videoKO = true; if (filmEnCours) sansVideo(); });
-      video.addEventListener('ended', function () { if (filmEnCours) finFilm(); });
-      video.src = fichier;
-      calque.appendChild(video);
+      // un lecteur par morceau, empilés : le suivant (au-dessus) n'apparaît qu'une fois lancé → pas d'écran noir entre deux
+      fichiers.forEach(function (f, k) {
+        var v = document.createElement('video');
+        v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', '');
+        v.preload = k < 2 ? 'auto' : 'metadata';
+        v.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;border-radius:0;object-fit:contain;display:block;background:#000;visibility:' + (k ? 'hidden' : 'visible');
+        v.addEventListener('error', function () { if (k === iV) { videoKO = true; if (filmEnCours) sansVideo(); } });
+        v.addEventListener('ended', function () { if (filmEnCours && k === iV) suivant(); });
+        v.addEventListener('playing', function () { if (k === iV) { v.style.visibility = 'visible'; lecteurs.forEach(function (w, j) { if (j < k) w.style.visibility = 'hidden'; }); } });
+        v.src = f;
+        calque.appendChild(v); lecteurs.push(v);
+      });
+      video = lecteurs[0];
       document.body.appendChild(calque);
       // bouton « grand écran » : le film passe en plein écran (16/9, bandes noires si besoin), re-toucher pour revenir dans la salle
       btnGrand = document.createElement('button');
@@ -504,11 +511,38 @@ window.AV = window.AV || {};
         var p = video.play(); if (p && p.catch) p.catch(function () { });
         if (scen) scen.ctx.cinema(scen.cine = { pos: CAM_SEANCE.pos, cible: CAM_SEANCE.cible, vitesse: 1.2, texte: '🎬 Bonne séance ! · ✋ Quitter la séance', quitter: finFilm });
       } else if (!deverrouille && !filmEnCours) {
-        // iPad : on « débloque » la vidéo pendant un geste pour pouvoir la lancer avec le son ensuite
-        deverrouille = true; video.muted = false;
-        var p2 = video.play();
-        if (p2 && p2.then) p2.then(function () { if (!filmEnCours) { video.pause(); video.currentTime = 0; } }).catch(function () { });
+        // iPad : on « débloque » chaque lecteur pendant un geste pour pouvoir les lancer avec le son ensuite
+        deverrouille = true;
+        lecteurs.forEach(function (v) {
+          v.muted = false;
+          var p2 = v.play();
+          if (p2 && p2.then) p2.then(function () { if (!filmEnCours || v !== video) { v.pause(); try { v.currentTime = 0; } catch (e) { } } }).catch(function () { });
+        });
       }
+    }
+    function jouer(v, essai) {
+      essai = essai || 0;
+      v.muted = false;
+      var p = v.play();
+      if (p && p.catch) p.catch(function (err) {
+        if (!filmEnCours || v !== video) return;
+        // iPad : un play() interrompu par un pause() (déverrouillage) ou un chargement en cours
+        // rejette avec AbortError → ce n'est pas une vidéo cassée, on relance
+        if (err && err.name === 'AbortError' && essai < 6) { setTimeout(function () { if (filmEnCours && v === video) jouer(v, essai + 1); }, 400); return; }
+        if (err && err.name === 'NotAllowedError') {
+          // lecture avec le son refusée : on lance sans le son, un toucher l'activera
+          v.muted = true; besoinSon = true;
+          var p2 = v.play(); if (p2 && p2.catch) p2.catch(function () { sansVideo(); });
+          scen.ctx.cinema(scen.cine = { pos: CAM_SEANCE.pos, cible: CAM_SEANCE.cible, vitesse: 1.2, texte: '🔊 Touche l\'écran pour avoir le son · ✋ Quitter', quitter: finFilm });
+        } else { videoKO = true; sansVideo(); }
+      });
+    }
+    function suivant() {
+      if (iV + 1 >= lecteurs.length) { finFilm(); return; }
+      iV++; video = lecteurs[iV];
+      if (lecteurs[iV + 1]) lecteurs[iV + 1].preload = 'auto';
+      try { video.currentTime = 0; } catch (e) { }
+      jouer(video);
     }
     document.addEventListener('touchend', geste, true);
     document.addEventListener('click', geste, true);
@@ -516,7 +550,7 @@ window.AV = window.AV || {};
     m.nettoyer = function () {
       document.removeEventListener('touchend', geste, true);
       document.removeEventListener('click', geste, true);
-      if (video) { try { video.pause(); video.removeAttribute('src'); video.load(); } catch (e) { } }
+      lecteurs.forEach(function (v) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) { } });
       if (calque && calque.parentNode) calque.parentNode.removeChild(calque);
       if (btnGrand && btnGrand.parentNode) btnGrand.parentNode.removeChild(btnGrand);
       AV.audio.projecteur(false);
@@ -535,18 +569,10 @@ window.AV = window.AV || {};
       placerCalque(scen.ctx.camera);
       btnGrand.style.display = 'block';
       setTimeout(function () { if (filmEnCours && calque) calque.style.opacity = '1'; }, 30);
-      video.muted = false;
+      iV = 0; video = lecteurs[0];
+      lecteurs.forEach(function (v, k) { v.style.visibility = k ? 'hidden' : 'visible'; if (k) { try { v.pause(); } catch (e) { } } });
       try { video.currentTime = 0; } catch (e) { }
-      var p = video.play();
-      if (p && p.catch) p.catch(function (err) {
-        if (!filmEnCours) return;
-        if (err && err.name === 'NotAllowedError') {
-          // lecture avec le son refusée : on lance sans le son, un toucher l'activera
-          video.muted = true; besoinSon = true;
-          var p2 = video.play(); if (p2 && p2.catch) p2.catch(function () { sansVideo(); });
-          scen.ctx.cinema(scen.cine = { pos: CAM_SEANCE.pos, cible: CAM_SEANCE.cible, vitesse: 1.2, texte: '🔊 Touche l\'écran pour avoir le son · ✋ Quitter', quitter: finFilm });
-        } else { videoKO = true; sansVideo(); }
-      });
+      jouer(video);
     }
     function sansVideo() {
       if (calque) { calque.style.opacity = '0'; calque.style.display = 'none'; }
@@ -556,7 +582,7 @@ window.AV = window.AV || {};
     function finFilm() {
       if (!scen || scen.fini) return;
       scen.fini = true; filmEnCours = false; besoinSon = false;
-      if (video) { try { video.pause(); } catch (e) { } }
+      lecteurs.forEach(function (v) { try { v.pause(); } catch (e) { } });
       if (btnGrand) { grandEcran(false); btnGrand.style.display = 'none'; }
       if (calque) { calque.style.opacity = '0'; setTimeout(function () { if (calque) calque.style.display = 'none'; }, 1200); }
       etatEcran = 'fin'; dessinFin(); ecran.material.color.set('#bbbbbb');

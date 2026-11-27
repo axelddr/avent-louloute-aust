@@ -5,7 +5,7 @@ window.AV = window.AV || {};
 
   var params = new URLSearchParams(location.search);
   var TEST = params.get('test') === '1' || location.hash === '#test'; // #test : pour la version en ligne (claude.ai)
-  var CONFIG = window.CONFIG || { annee: new Date().getFullYear(), titre: 'Nos 24 souvenirs', indiceApres: 120, indiceChaudFroid: 240 };
+  var CONFIG = window.CONFIG || { annee: new Date().getFullYear(), titre: 'Louloute\'s Advent Calendar', indiceApres: 120, indiceChaudFroid: 240 };
   var JOURS = window.JOURS || [];
 
   var renderer, scene, camera, hemi, soleil, dirSoleil = new THREE.Vector3(0.5, 1, 0.3).normalize();
@@ -51,7 +51,18 @@ window.AV = window.AV || {};
   // ---------- Interface ----------
   function message(txt) { var m = $('hud-message'); if (txt) { m.innerHTML = txt; m.classList.add('visible'); } else m.classList.remove('visible'); }
   function indice(txt, couleur) { var e = $('hud-indice'); if (txt) { e.textContent = txt; e.style.background = couleur || ''; e.classList.add('visible'); } else e.classList.remove('visible'); }
-  function titreHud(t, s) { $('hud-titre').textContent = t; $('hud-sous-titre').textContent = s || ''; }
+  // dans un biome, l'encadré en haut à gauche s'efface après quelques secondes (immersion) ;
+  // il réapparaît brièvement quand son texte change (progression), et reste affiché au village
+  var hudMinuteur = null;
+  function titreHud(t, s) {
+    var tt = $('hud-titre'), st = $('hud-sous-titre'), boite = $('hud-haut-gauche');
+    var change = tt.textContent !== t || st.textContent !== (s || '');
+    tt.textContent = t; st.textContent = s || '';
+    if (!jourCfg) { clearTimeout(hudMinuteur); boite.classList.remove('discret'); return; }
+    if (!change) return;
+    clearTimeout(hudMinuteur); boite.classList.remove('discret');
+    hudMinuteur = setTimeout(function () { if (jourCfg) boite.classList.add('discret'); }, 4500);
+  }
   function fondu(cb) {
     transition = true;
     $('fondu').classList.add('noir');
@@ -105,7 +116,7 @@ window.AV = window.AV || {};
       cam.lacet = a;
       placerCamera(1);
     }
-    var a2 = aujourdhui(), n = nbTrouves(), s = (m.meteo ? m.meteo + ' · ' : '') + '⭐ ' + n + ' / 24 souvenirs trouvés';
+    var a2 = aujourdhui(), n = nbTrouves(), s = (m.meteo ? m.meteo + ' · ' : '') + '⭐ ' + n + ' / 24 portes ouvertes';
     if (a2 && !progression.jours[a2]) s += ' · Aujourd\'hui : porte ' + a2 + ' ✨ suis la lumière';
     else if (!TEST && new Date() < new Date(CONFIG.annee, 11, 1)) s += ' · Rendez-vous le 1er décembre !';
     titreHud(CONFIG.titre, s);
@@ -228,8 +239,8 @@ window.AV = window.AV || {};
         else if (it.type === 'portail') {
           var c = cfgJour(it.jour);
           if (it.etat === 'verrouille') cible = { texte: '🔒 Porte ' + it.jour + ' · patience, elle s\'ouvre le ' + it.jour + ' décembre', fn: null };
-          else cible = {
-            texte: '<b>Jour ' + it.jour + '</b> · ' + c.titre.replace(/</g, '&lt;') + (it.etat === 'fait' ? ' ✔' : '') + '<br>✋ pour entrer',
+          else cible = { // le nom du souvenir ne se dévoile qu'une fois la porte résolue
+            texte: '<b>Jour ' + it.jour + '</b>' + (it.etat === 'fait' ? ' · ' + c.titre.replace(/</g, '&lt;') + ' ✔' : ' · 🎁 surprise…') + '<br>✋ pour entrer',
             fn: (function (n) { return function () { fondu(function () { allerJour(n); }); }; })(it.jour)
           };
         }
@@ -433,10 +444,10 @@ window.AV = window.AV || {};
     if (!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen)) $('btn-plein-ecran').classList.add('cache');
     if ('ontouchstart' in window || navigator.maxTouchPoints > 0) document.body.classList.add('tactile');
 
-    $('titre-principal').textContent = CONFIG.titre || 'Nos 24 souvenirs';
+    $('titre-principal').textContent = CONFIG.titre || 'Louloute\'s Advent Calendar';
     $('titre-sous-titre').textContent = CONFIG.sousTitre || '';
     var n = nbTrouves();
-    $('titre-progression').textContent = n ? '⭐ ' + n + ' / 24 souvenirs déjà trouvés' : '';
+    $('titre-progression').textContent = n ? '⭐ ' + n + ' / 24 portes déjà ouvertes' : '';
     if (TEST) $('titre-test').classList.remove('cache');
     $('btn-commencer').onclick = commencer;
 
